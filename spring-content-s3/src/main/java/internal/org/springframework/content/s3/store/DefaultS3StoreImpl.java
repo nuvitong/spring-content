@@ -19,6 +19,7 @@ import org.springframework.content.commons.repository.StoreAccessException;
 import org.springframework.content.commons.utils.BeanUtils;
 import org.springframework.content.commons.utils.Condition;
 import org.springframework.content.s3.S3ContentId;
+import org.springframework.content.s3.S3ContentIdHelper;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.TypeDescriptor;
 import org.springframework.core.io.Resource;
@@ -36,6 +37,7 @@ public class DefaultS3StoreImpl<S, SID extends Serializable> implements Store<SI
 	private ResourceLoader loader;
 	private ConversionService converter;
 	private AmazonS3 client;
+	private S3ContentIdHelper<SID> contentIdHelper = S3ContentIdHelper.createDefaultS3ContentIdHelper();
 	private String bucket;
 
 	public DefaultS3StoreImpl(ResourceLoader loader, ConversionService converter, AmazonS3 client, String bucket) {
@@ -47,19 +49,19 @@ public class DefaultS3StoreImpl<S, SID extends Serializable> implements Store<SI
 		this.client = client;
 		this.bucket = bucket;
 	}
+	
+	public S3ContentIdHelper<SID> getContentIdHelper() {
+		return contentIdHelper;
+	}
+
+	public void setContentIdHelper(S3ContentIdHelper<SID> contentIdHelper) {
+		this.contentIdHelper = contentIdHelper;
+	}
 
 	@Override
 	public Resource getResource(SID id) {
-		String bucket = null;
-		Object objectId = null;
-
-		if (id instanceof S3ContentId) {
-			bucket = ((S3ContentId)id).getBucket();
-			objectId = ((S3ContentId)id).getObjectId();
-		} else {
-			bucket = this.bucket;
-			objectId = id;
-		}
+		String bucket = this.contentIdHelper.getBucket(id, this.bucket);
+		String objectId = this.contentIdHelper.getObjectId(id);
 
 		if (bucket == null) {
 			throw new StoreAccessException("Bucket not set");
@@ -79,6 +81,7 @@ public class DefaultS3StoreImpl<S, SID extends Serializable> implements Store<SI
 			contentId = (SID) converter.convert(newId, TypeDescriptor.forObject(newId), TypeDescriptor.valueOf(BeanUtils.getFieldWithAnnotationType(property, ContentId.class)));
 			BeanUtils.setFieldWithAnnotation(property, ContentId.class, contentId);
 		}
+		this.contentIdHelper.validate(contentId);
 
 		Resource resource = this.getResource(contentId);
 
@@ -137,10 +140,7 @@ public class DefaultS3StoreImpl<S, SID extends Serializable> implements Store<SI
 
 		// delete any existing content object
 		try {
-			Resource resource = this.getResource(contentId);
-			if (resource.exists()) {
-				this.delete(resource);
-			}
+			deleteIfExists(contentId);
 
 			// reset content fields
 			BeanUtils.setFieldWithAnnotationConditionally(property, ContentId.class, null, new Condition() {
@@ -171,9 +171,12 @@ public class DefaultS3StoreImpl<S, SID extends Serializable> implements Store<SI
 		return String.format("s3://%s/%s", bucket, locationToUse);
 	}
 	
-	private void delete(Resource resource) {
+	private void deleteIfExists(SID contentId) {
+		String bucketName = this.contentIdHelper.getBucket(contentId, this.bucket);
+		
+		Resource resource = this.getResource(contentId);
 		if (resource.exists()) {
-			client.deleteObject(new DeleteObjectRequest(bucket, resource.getFilename()));
+			client.deleteObject(new DeleteObjectRequest(bucketName, resource.getFilename()));
 		}
 	}
 }
