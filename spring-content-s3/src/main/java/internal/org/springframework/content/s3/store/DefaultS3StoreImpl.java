@@ -18,7 +18,6 @@ import org.springframework.content.commons.repository.Store;
 import org.springframework.content.commons.repository.StoreAccessException;
 import org.springframework.content.commons.utils.BeanUtils;
 import org.springframework.content.commons.utils.Condition;
-import org.springframework.content.s3.S3ContentId;
 import org.springframework.content.s3.S3ContentIdHelper;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.TypeDescriptor;
